@@ -1,0 +1,40 @@
+name: Build APK
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip openjdk-17-jdk zip unzip \
+            autoconf libtool libffi-dev libssl-dev \
+            build-essential ccache git
+
+          pip3 install buildozer==1.5.0 cython==0.29.36
+
+      - name: Accept Android licenses
+        run: |
+          mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > \
+            $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> \
+            $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "8933bad161af4178b1185d1a37fbf41ea5269c55" >> \
+            $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+
+      - name: Build APK
+        run: |
+          export BUILDOZER_WARN_ON_ROOT=0
+          echo "y" | buildozer android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: NeuroPix-APK
+          path: bin/*.apk
