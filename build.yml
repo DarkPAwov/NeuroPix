@@ -1,40 +1,59 @@
 name: Build APK
-
 on: [push, workflow_dispatch]
-
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            python3-pip openjdk-17-jdk zip unzip \
+            python3-pip openjdk-17-jdk zip unzip wget \
             autoconf libtool libffi-dev libssl-dev \
-            build-essential ccache git
-
+            libbz2-dev zlib1g-dev build-essential ccache git
           pip3 install buildozer==1.5.0 cython==0.29.36
 
-      - name: Accept Android licenses
+      - name: Setup Android SDK + sdkmanager
         run: |
-          mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
-          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > \
-            $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> \
-            $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          echo "8933bad161af4178b1185d1a37fbf41ea5269c55" >> \
-            $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          SDK=$HOME/.buildozer/android/platform/android-sdk
+          mkdir -p $SDK/cmdline-tools
+
+          # Скачиваем Android Command Line Tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip -d $SDK/cmdline-tools
+          mv $SDK/cmdline-tools/cmdline-tools $SDK/cmdline-tools/latest
+
+          # Создаём симлинк по старому пути (buildozer ищет именно здесь)
+          mkdir -p $SDK/tools/bin
+          ln -sf $SDK/cmdline-tools/latest/bin/sdkmanager $SDK/tools/bin/sdkmanager
+          ln -sf $SDK/cmdline-tools/latest/bin/avdmanager $SDK/tools/bin/avdmanager
+
+          # Принимаем лицензии
+          mkdir -p $SDK/licenses
+          printf "24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb78af6dfcb131a6481e\n8933bad161af4178b1185d1a37fbf41ea5269c55" \
+            > $SDK/licenses/android-sdk-license
+          printf "84831b9409646a918e30573bab4c9c91346d8abd" \
+            > $SDK/licenses/android-sdk-preview-license
+
+          # Устанавливаем нужные пакеты
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          yes | $SDK/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $SDK/cmdline-tools/latest/bin/sdkmanager \
+            "build-tools;33.0.2" \
+            "platforms;android-31" \
+            "platform-tools"
 
       - name: Build APK
+        env:
+          BUILDOZER_WARN_ON_ROOT: "0"
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: |
-          export BUILDOZER_WARN_ON_ROOT=0
-          echo "y" | buildozer android debug
+          echo y | buildozer android debug 2>&1 | tail -50
 
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: NeuroPix-APK
           path: bin/*.apk
